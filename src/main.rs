@@ -5,7 +5,10 @@ use defmt::info;
 use defmt_rtt as _;
 use embassy_executor::Spawner;
 use embassy_stm32::{
-    bind_interrupts, gpio, peripherals,
+    bind_interrupts,
+    exti::ExtiInput,
+    gpio::{self, Pin},
+    peripherals,
     ucpd::{self, CcSel},
     usart::{self, BufferedUart, Uart},
 };
@@ -19,8 +22,37 @@ bind_interrupts!(struct Irqs {
     UCPD1_2 => ucpd::InterruptHandler<peripherals::UCPD1>;
 });
 
+#[embassy_executor::task]
+async fn door_monitor(
+    mut door_sense: ExtiInput<'static>,
+    mut en_cc1: gpio::Output<'static>,
+    mut en_cc2: gpio::Output<'static>,
+    mut en_rd: gpio::Output<'static>,
+    mut led_spy: gpio::Output<'static>,
+) {
+    loop {
+        info!("Door: {}", door_sense.is_high());
+        if door_sense.is_high() {
+            led_spy.set_high();
+            /* spy mode; disable RD */
+            en_rd.set_low();
+            // Pass through both cc lines
+            en_cc1.set_high();
+            en_cc2.set_high();
+        } else {
+            led_spy.set_low();
+            // standalone, so enable rd resistor
+            en_rd.set_high();
+            // rd is on cc1 so only pass that though
+            en_cc1.set_high();
+            en_cc2.set_low();
+        }
+        door_sense.wait_for_any_edge().await;
+    }
+}
+
 #[embassy_executor::main]
-async fn main(_spawner: Spawner) {
+async fn main(spawner: Spawner) {
     let p = embassy_stm32::init(Default::default());
 
     info!("STARTED");
@@ -39,16 +71,27 @@ async fn main(_spawner: Spawner) {
     )
     .unwrap();
 
-    let mut led_spy = gpio::Output::new(p.PC12, gpio::Level::Low, gpio::Speed::Low);
+    // Setup door monitor
+    let door_sense = embassy_stm32::exti::ExtiInput::new(p.PC8, p.EXTI8, gpio::Pull::Up);
+    let en_cc1 = gpio::Output::new(p.PB10, gpio::Level::High, gpio::Speed::Low);
+    let en_cc2 = gpio::Output::new(p.PB11, gpio::Level::High, gpio::Speed::Low);
+    let en_rb = gpio::Output::new(p.PB12, gpio::Level::High, gpio::Speed::Low);
+    let led_spy = gpio::Output::new(p.PC12, gpio::Level::Low, gpio::Speed::Low);
 
+    spawner
+        .spawn(door_monitor(door_sense, en_cc1, en_cc2, en_rb, led_spy))
+        .unwrap();
+
+    uart.write(b"started\r\n").await;
+    // Monitor CC; TODO swithc dynamically to CC2 if needed
     // _cc_phy is unused as there is an external Rd in both modes
+    let mut led_cc = gpio::Output::new(p.PD5, gpio::Level::Low, gpio::Speed::Low);
     let (_cc_phy, mut pd_phy) = ucpd::Ucpd::new(p.UCPD1, Irqs, p.PA8, p.PB15).split_pd_phy(
         p.DMA1_CH1,
         p.DMA1_CH2,
         CcSel::CC1,
     );
 
-    uart.write(b"started\r\n").await;
     loop {
         let mut buf = [0u8; 128];
         match pd_phy.receive(&mut buf).await {
@@ -65,7 +108,7 @@ async fn main(_spawner: Spawner) {
             }
             Err(e) => info!("USB PD RX: {}", e),
         }
-        led_spy.toggle();
+        led_cc.toggle();
         //uart.write(&data[..r]).await.unwrap();
         //Timer::after_millis(500).await;
     }
