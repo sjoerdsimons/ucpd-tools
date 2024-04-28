@@ -681,7 +681,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "stm32g071b-disco-rs"
+name = "stm32g071b-disco-firmware"
 version = "0.1.0"
 dependencies = [
  "byteorder",

@@ -1,5 +1,5 @@
 [package]
-name = "stm32g071b-disco-rs"
+name = "stm32g071b-disco-firmware"
 version = "0.1.0"
 edition = "2021"
 
@@ -16,7 +16,7 @@ embassy-stm32 = { version = "0.1.0", features = ["stm32g071rb", "defmt", "memory
 embedded-hal = "1.0.0"
 embedded-io-async = "0.6.1"
 panic-probe = { version = "0.3.1", features = ["print-defmt"] }
-usb-pd = { version = "0.0.1", path = "../usb-pd-rs/usb-pd" }
+usb-pd = { version = "0.0.1", path = "../../usb-pd-rs/usb-pd" }
 #usb-pd = { version = "0.0.1" }
 
 [profile.release]
