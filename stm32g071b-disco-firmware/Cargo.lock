@@ -791,6 +791,7 @@ checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
 [[package]]
 name = "usb-pd"
 version = "0.0.1"
+source = "git+https://github.com/sjoerdsimons/usb-pd-rs?branch=misc#44011b443a82f918ace0e3992723d31896bcdfd9"
 dependencies = [
  "byteorder",
  "defmt",

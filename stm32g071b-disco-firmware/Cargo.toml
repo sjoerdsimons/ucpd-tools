@@ -19,8 +19,8 @@ embedded-hal = "1.0.0"
 embedded-io-async = "0.6.1"
 minicbor = "0.24.0"
 panic-probe = { version = "0.3.1", features = ["print-defmt"] }
-usb-pd = { version = "0.0.1", path = "../../usb-pd-rs/usb-pd" }
-#usb-pd = { version = "0.0.1" }
+# Hopefully temporary fork
+usb-pd = { version = "0.0.1", git = "https://github.com/sjoerdsimons/usb-pd-rs", branch = "misc"}
 
 [profile.release]
 lto = true
