@@ -41,19 +41,12 @@ async fn main(_spawner: Spawner) {
 
     let mut led_spy = gpio::Output::new(p.PC12, gpio::Level::Low, gpio::Speed::Low);
 
-    let mut ucpd1 = ucpd::Ucpd::new(p.UCPD1, Irqs, p.PA8, p.PB15);
-    let (_cc_phy, mut pd_phy) = ucpd1.split_pd_phy(p.DMA1_CH1, p.DMA1_CH2, CcSel::CC1);
-
-    // vstate not monitored by phy due to external pulldown
-    /*
-    let vstate = cc_phy.vstate();
-    info!("vstate cc1: {} cc2: {}", vstate.0 as u8, vstate.1 as u8);
-    let vstate = cc_phy.wait_for_vstate_change().await;
-    info!(
-        "vstate change cc1: {} cc2: {}",
-        vstate.0 as u8, vstate.1 as u8
+    // _cc_phy is unused as there is an external Rd in both modes
+    let (_cc_phy, mut pd_phy) = ucpd::Ucpd::new(p.UCPD1, Irqs, p.PA8, p.PB15).split_pd_phy(
+        p.DMA1_CH1,
+        p.DMA1_CH2,
+        CcSel::CC1,
     );
-    */
 
     uart.write(b"started\r\n").await;
     loop {
