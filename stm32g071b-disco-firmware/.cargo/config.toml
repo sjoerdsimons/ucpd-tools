@@ -1,5 +1,5 @@
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
-runner = "probe-rs run --chip STM32G071RBTx"
+runner = [ "probe-rs", "run", "--log-format", "{L} {s}", "--chip", "STM32G071RBTx" ]
 rustflags = [
   "-C", "link-arg=--nmagic",
   "-C", "link-arg=-Tlink.x",
@@ -10,5 +10,5 @@ rustflags = [
 target = "thumbv6m-none-eabi"
 
 [env]
-DEFMT_LOG = "trace"
+DEFMT_LOG = "debug"
 

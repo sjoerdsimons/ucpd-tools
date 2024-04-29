@@ -1,7 +1,6 @@
 use analyzer_cbor::{AnalyserData, Decoder};
 use byteorder::{ByteOrder, LittleEndian};
 use clap::Parser;
-use serialport;
 use std::{
     fs::File,
     io::{Read, Write},
@@ -23,9 +22,9 @@ fn do_work<R: Read, W: Write>(mut input: R, mut output: Option<W>) {
     let mut data = [0u8; 1024];
     let mut d = Decoder::new(&mut data);
     loop {
-        let mut read_buffer = d.write_buffer();
+        let read_buffer = d.write_buffer();
 
-        let r = input.read(&mut read_buffer).unwrap();
+        let r = input.read(read_buffer).unwrap();
         if r == 0 {
             return;
         }
@@ -39,12 +38,15 @@ fn do_work<R: Read, W: Write>(mut input: R, mut output: Option<W>) {
         while let Some(data) = d.decode() {
             match data {
                 AnalyserData::Version { version } => println!("Analyser version: {version}"),
-                analyzer_cbor::AnalyserData::PdSpy { data } => {
+                AnalyserData::PdSpy { data } => {
                     let header = Header(LittleEndian::read_u16(&data[..2]));
                     println!("======== PD Msg: {:?} ============", header.message_type());
                     println!("Header: {:#?}", header);
                     let message = Message::parse(header, &data[2..]);
                     println!("Message: {:#?}", message);
+                }
+                AnalyserData::Voltage { label, value } => {
+                    println!("== {label}: {value}V ==");
                 }
             }
         }

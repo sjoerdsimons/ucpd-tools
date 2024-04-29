@@ -399,6 +399,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "embedded-hal-bus"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57b4e6ede84339ebdb418cd986e6320a34b017cdf99b5cc3efceec6450b06886"
+dependencies = [
+ "critical-section",
+ "embedded-hal 1.0.0",
+]
+
+[[package]]
 name = "embedded-hal-nb"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -512,6 +522,17 @@ name = "ident_case"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
+
+[[package]]
+name = "ina226"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33d4c2251dd235e54822867adb6384b0302ad9d1a64fcaefa4f0625757d43d78"
+dependencies = [
+ "bitflags 2.5.0",
+ "byteorder",
+ "embedded-hal 1.0.0",
+]
 
 [[package]]
 name = "litrs"
@@ -727,8 +748,12 @@ dependencies = [
  "embassy-executor",
  "embassy-futures 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "embassy-stm32",
+ "embassy-sync",
+ "embassy-time",
  "embedded-hal 1.0.0",
+ "embedded-hal-bus",
  "embedded-io-async",
+ "ina226",
  "minicbor",
  "panic-probe",
  "usb-pd",

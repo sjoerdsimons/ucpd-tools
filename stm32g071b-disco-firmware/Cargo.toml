@@ -15,8 +15,12 @@ defmt-rtt = "0.4.0"
 embassy-executor = { version = "0.5.0", features = ["arch-cortex-m", "executor-thread", "defmt", "integrated-timers"], git = "https://github.com/embassy-rs/embassy"  }
 embassy-futures = "0.1.1"
 embassy-stm32 = { version = "0.1.0", features = ["stm32g071rb", "defmt", "memory-x", "time-driver-any",  "exti"] , git = "https://github.com/embassy-rs/embassy"  }
+embassy-sync = { git = "https://github.com/embassy-rs/embassy", version = "0.5.0" }
+embassy-time = { version = "0.3.0", git = "https://github.com/embassy-rs/embassy" }
 embedded-hal = "1.0.0"
+embedded-hal-bus = { version = "0.1.0" }
 embedded-io-async = "0.6.1"
+ina226 = "0.2.0"
 minicbor = "0.24.0"
 panic-probe = { version = "0.3.1", features = ["print-defmt"] }
 # Hopefully temporary fork

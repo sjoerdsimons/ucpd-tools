@@ -13,6 +13,13 @@ pub enum AnalyserData<'a> {
         #[n(1)]
         data: &'a ByteSlice,
     },
+    #[n(3)]
+    Voltage {
+        #[n(1)]
+        label: &'a str,
+        #[n(2)]
+        value: f64,
+    },
 }
 
 #[derive(Debug)]
