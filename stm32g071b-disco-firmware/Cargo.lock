@@ -386,26 +386,25 @@ dependencies = [
 [[package]]
 name = "embedded-hal"
 version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
+source = "git+https://github.com/sjoerdsimons/embedded-hal?branch=i2c-ref-async+fix-armv6-build#5ad98915d5c178f8cee08f34f2820c4e4e255d84"
 
 [[package]]
 name = "embedded-hal-async"
 version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c4c685bbef7fe13c3c6dd4da26841ed3980ef33e841cddfa15ce8a8fb3f1884"
+source = "git+https://github.com/sjoerdsimons/embedded-hal?branch=i2c-ref-async+fix-armv6-build#5ad98915d5c178f8cee08f34f2820c4e4e255d84"
 dependencies = [
  "embedded-hal 1.0.0",
 ]
 
 [[package]]
 name = "embedded-hal-bus"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57b4e6ede84339ebdb418cd986e6320a34b017cdf99b5cc3efceec6450b06886"
+version = "0.2.0"
+source = "git+https://github.com/sjoerdsimons/embedded-hal?branch=i2c-ref-async+fix-armv6-build#5ad98915d5c178f8cee08f34f2820c4e4e255d84"
 dependencies = [
  "critical-section",
  "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "portable-atomic",
 ]
 
 [[package]]
@@ -526,12 +525,13 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 [[package]]
 name = "ina226"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33d4c2251dd235e54822867adb6384b0302ad9d1a64fcaefa4f0625757d43d78"
+source = "git+https://github.com/sjoerdsimons/ina226?branch=asyncify#06295c8beb8a94df6eec28070aa3aa7b8f27f0f5"
 dependencies = [
  "bitflags 2.5.0",
  "byteorder",
  "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "maybe-async-cfg",
 ]
 
 [[package]]
@@ -539,6 +539,25 @@ name = "litrs"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4ce301924b7887e9d637144fdade93f9dfff9b60981d4ac161db09720d39aa5"
+
+[[package]]
+name = "maybe-async-cfg"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21fb8fac02158b9b529eb692491895d8459dbac939f3bc6e32159969646ffe55"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2",
+ "pulldown-cmark",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "memchr"
+version = "2.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c8640c5d730cb13ebd907d8d04b52f55ac9a2eec55b440c8892f40d56c76c1d"
 
 [[package]]
 name = "minicbor"
@@ -607,6 +626,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
+name = "portable-atomic"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7170ef9988bc169ba16dd36a7fa041e5c4cbeb6a35b76d4c03daded371eae7c0"
+
+[[package]]
 name = "proc-bitfield"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -658,6 +683,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d1597b0c024618f09a9c3b8655b7e430397a36d23fdafec26d6965e9eec3eba"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "pulldown-cmark"
+version = "0.9.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57206b407293d2bcd3af849ce869d52068623f19e1b5ff8e8778e3309439682b"
+dependencies = [
+ "bitflags 2.5.0",
+ "memchr",
+ "unicase",
 ]
 
 [[package]]
@@ -805,6 +841,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.60",
+]
+
+[[package]]
+name = "unicase"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7d2d4dafb69621809a81864c9c1b864479e1235c0dd4e199924b9742439ed89"
+dependencies = [
+ "version_check",
 ]
 
 [[package]]

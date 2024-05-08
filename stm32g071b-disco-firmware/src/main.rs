@@ -103,15 +103,43 @@ async fn serial_output(uart: USART3, tx: PC11, rx: PC10) {
 async fn sensor_monitor(i2c: I2c<'static, peripherals::I2C1, Async>) {
     let i2c = RefCell::new(i2c);
     let mut vbus = ina226::INA226::new(embedded_hal_bus::i2c::RefCellDevice::new(&i2c), 0x40);
+
+    vbus.callibrate(0.015, 5.0)
+        .await
+        .expect("Failed to calibrate vbus");
     let mut cc1 = ina226::INA226::new(embedded_hal_bus::i2c::RefCellDevice::new(&i2c), 0x41);
+    cc1.callibrate(0.015, 5.0)
+        .await
+        .expect("Failed to calibrate cc1");
     let mut cc2 = ina226::INA226::new(embedded_hal_bus::i2c::RefCellDevice::new(&i2c), 0x42);
+    cc2.callibrate(0.015, 5.0)
+        .await
+        .expect("Failed to calibrate cc2");
+
     loop {
-        let vbus_v = vbus.bus_voltage_millivolts().unwrap_or_default() / 1000.0;
-        let cc1_v = cc1.bus_voltage_millivolts().unwrap_or_default() / 1000.0;
-        let cc2_v = cc2.bus_voltage_millivolts().unwrap_or_default() / 1000.0;
-        info!("VBus: {}", vbus_v);
-        info!("CC1: {}", cc1_v);
-        info!("CC2: {}", cc2_v);
+        let vbus_v = vbus.bus_voltage_millivolts().await.unwrap_or_default() / 1000.0;
+        let vbus_a = vbus
+            .current_amps()
+            .await
+            .unwrap_or_default()
+            .unwrap_or_default();
+
+        let cc1_v = cc1.bus_voltage_millivolts().await.unwrap_or_default() / 1000.0;
+        let cc1_a = cc1
+            .current_amps()
+            .await
+            .unwrap_or_default()
+            .unwrap_or_default();
+
+        let cc2_v = cc2.bus_voltage_millivolts().await.unwrap_or_default() / 1000.0;
+        let cc2_a = cc2
+            .current_amps()
+            .await
+            .unwrap_or_default()
+            .unwrap_or_default();
+        info!("VBus: {}V {}A", vbus_v, vbus_a);
+        info!("CC1: {}V {}A", cc1_v, cc1_a);
+        info!("CC2: {}V {}A", cc2_v, cc2_a);
         CHANNEL
             .send(Data::Voltage {
                 vbus: vbus_v,
