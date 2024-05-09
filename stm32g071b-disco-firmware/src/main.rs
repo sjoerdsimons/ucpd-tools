@@ -1,11 +1,10 @@
 #![no_main]
 #![no_std]
-use core::cell::RefCell;
-
 use analyzer_cbor::AnalyserData;
 use byteorder::{ByteOrder, LittleEndian};
 use defmt::info;
 use defmt_rtt as _;
+use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::Spawner;
 use embassy_futures::select::select_array;
 use embassy_stm32::{
@@ -20,7 +19,7 @@ use embassy_stm32::{
     ucpd::{self, CcSel},
     usart::{self, BufferedUart},
 };
-use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, channel::Channel};
+use embassy_sync::{blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex}, channel::Channel, mutex::Mutex};
 use embassy_time::Timer;
 use embedded_io_async::Write;
 use minicbor::encode::write::Cursor;
@@ -101,17 +100,16 @@ async fn serial_output(uart: USART3, tx: PC11, rx: PC10) {
 
 #[embassy_executor::task]
 async fn sensor_monitor(i2c: I2c<'static, peripherals::I2C1, Async>) {
-    let i2c = RefCell::new(i2c);
-    let mut vbus = ina226::INA226::new(embedded_hal_bus::i2c::RefCellDevice::new(&i2c), 0x40);
-
+    let i2c: Mutex<NoopRawMutex,_>  = Mutex::new(i2c);
+    let mut vbus = ina226::INA226::new(I2cDevice::new(&i2c), 0x40);
     vbus.callibrate(0.015, 5.0)
         .await
         .expect("Failed to calibrate vbus");
-    let mut cc1 = ina226::INA226::new(embedded_hal_bus::i2c::RefCellDevice::new(&i2c), 0x41);
+    let mut cc1 = ina226::INA226::new(I2cDevice::new(&i2c), 0x41);
     cc1.callibrate(0.015, 5.0)
         .await
         .expect("Failed to calibrate cc1");
-    let mut cc2 = ina226::INA226::new(embedded_hal_bus::i2c::RefCellDevice::new(&i2c), 0x42);
+    let mut cc2 = ina226::INA226::new(I2cDevice::new(&i2c), 0x42);
     cc2.callibrate(0.015, 5.0)
         .await
         .expect("Failed to calibrate cc2");
