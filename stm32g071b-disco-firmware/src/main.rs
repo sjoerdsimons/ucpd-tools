@@ -1,8 +1,10 @@
 #![no_main]
 #![no_std]
+use core::fmt::Display;
+
 use analyzer_cbor::AnalyserData;
 use byteorder::{ByteOrder, LittleEndian};
-use defmt::info;
+use defmt::{info, trace};
 use defmt_rtt as _;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::Spawner;
@@ -13,19 +15,57 @@ use embassy_stm32::{
     gpio,
     i2c::{self, I2c},
     mode::Async,
-    peripherals,
-    peripherals::{PC10, PC11, USART3},
+    peripherals::{self, PA3, PA6, PA7, PC10, PC11, USART3},
+    spi::Spi,
     time::Hertz,
     ucpd::{self, CcSel},
     usart::{self, BufferedUart},
 };
-use embassy_sync::{blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex}, channel::Channel, mutex::Mutex};
+use embassy_sync::{
+    blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex},
+    channel::Channel,
+    mutex::Mutex,
+};
 use embassy_time::Timer;
+use embedded_graphics::{
+    draw_target::DrawTarget,
+    geometry::Point,
+    mono_font::{ascii::FONT_6X12, MonoTextStyleBuilder},
+    pixelcolor::BinaryColor,
+    text::{Baseline, Text},
+    Drawable,
+};
+use embedded_hal_bus::spi::NoDelay;
 use embedded_io_async::Write;
 use minicbor::encode::write::Cursor;
+use ssd1306::{prelude::*, Ssd1306};
 use usb_pd::message::Message;
 
 use panic_probe as _;
+
+mod watch;
+use watch::{Watch, WatchPublisher, WatchSubscriber};
+
+// Channel for PD messages
+static CHANNEL: Channel<ThreadModeRawMutex, Data, 8> = Channel::new();
+// Watch for voltage sensors
+static SENSOR_DATA: Watch<ThreadModeRawMutex, SensorData, 2> = Watch::new();
+
+#[derive(Clone)]
+struct SensorData {
+    vbus_v: f64,
+    vbus_a: f64,
+    cc1_v: f64,
+    cc2_v: f64,
+}
+
+struct Precision2(f64);
+impl Display for Precision2 {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let u = ((self.0 * 100.0) as i64).abs();
+        f.write_fmt(format_args!("{}.{:02}", u / 100, u % 100))
+    }
+}
 
 bind_interrupts!(struct Irqs {
     USART3_4_LPUART1 => usart::BufferedInterruptHandler<peripherals::USART3>;
@@ -39,13 +79,68 @@ enum Data {
     Pd { data: [u8; 128], len: usize },
     Voltage { vbus: f64, cc1: f64, cc2: f64 },
 }
-static CHANNEL: Channel<ThreadModeRawMutex, Data, 8> = Channel::new();
 
 async fn send_data(uart: &mut BufferedUart<'_, USART3>, data: &AnalyserData<'_>) {
     let mut cursor = Cursor::new([0u8; 128]);
     minicbor::encode(data, &mut cursor).unwrap();
     let len = cursor.position();
     uart.write_all(&cursor.get_ref()[..len]).await.unwrap();
+}
+
+// needs spi (spi1, sck: pa1, mosi: pa2), dc pin: pa7, reset: pa6, cs: pa3
+#[embassy_executor::task]
+async fn display(
+    spi: Spi<'static, peripherals::SPI1, Async>,
+    dc: PA7,
+    reset: PA6,
+    cs: PA3,
+    mut sensors: WatchSubscriber<'static, SensorData>,
+) {
+    let dc = gpio::Output::new(dc, gpio::Level::Low, gpio::Speed::Low);
+    let cs = gpio::Output::new(cs, gpio::Level::Low, gpio::Speed::Low);
+    let mut reset = gpio::Output::new(reset, gpio::Level::Low, gpio::Speed::Low);
+
+    let device = embedded_hal_bus::spi::ExclusiveDevice::new(spi, cs, NoDelay).unwrap();
+
+    let interface = SPIInterface::new(device, dc);
+    let mut display = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)
+        .into_buffered_graphics_mode();
+
+    display
+        .reset(&mut reset, &mut embassy_time::Delay {})
+        .unwrap();
+    display.init().unwrap();
+
+    let text_style = MonoTextStyleBuilder::new()
+        .font(&FONT_6X12)
+        .text_color(BinaryColor::On)
+        .build();
+
+    loop {
+        use core::fmt::Write;
+        let mut info = heapless::String::<64>::new();
+        display.clear(BinaryColor::Off).unwrap();
+
+        if let Some(data) = sensors.last() {
+            let _ = write!(
+                info,
+                "VBUS: {}V {}A\nCC1: {}V\nCC2: {}V",
+                Precision2(data.vbus_v),
+                Precision2(data.vbus_a),
+                Precision2(data.cc1_v),
+                Precision2(data.cc2_v),
+            );
+        } else {
+            let _ = write!(info, "*****",);
+        }
+
+        // Vbus
+        Text::with_baseline(&info, Point::new(4, 8), text_style, Baseline::Top)
+            .draw(&mut display)
+            .unwrap();
+        display.flush().unwrap();
+        Timer::after_millis(250).await;
+    }
 }
 
 #[embassy_executor::task]
@@ -99,8 +194,11 @@ async fn serial_output(uart: USART3, tx: PC11, rx: PC10) {
 }
 
 #[embassy_executor::task]
-async fn sensor_monitor(i2c: I2c<'static, peripherals::I2C1, Async>) {
-    let i2c: Mutex<NoopRawMutex,_>  = Mutex::new(i2c);
+async fn sensor_monitor(
+    i2c: I2c<'static, peripherals::I2C1, Async>,
+    publisher: WatchPublisher<'static, SensorData>,
+) {
+    let i2c: Mutex<NoopRawMutex, _> = Mutex::new(i2c);
     let mut vbus = ina226::INA226::new(I2cDevice::new(&i2c), 0x40);
     vbus.callibrate(0.015, 5.0)
         .await
@@ -135,9 +233,15 @@ async fn sensor_monitor(i2c: I2c<'static, peripherals::I2C1, Async>) {
             .await
             .unwrap_or_default()
             .unwrap_or_default();
-        info!("VBus: {}V {}A", vbus_v, vbus_a);
-        info!("CC1: {}V {}A", cc1_v, cc1_a);
-        info!("CC2: {}V {}A", cc2_v, cc2_a);
+        trace!("VBus: {}V {}A", vbus_v, vbus_a);
+        trace!("CC1: {}V {}A", cc1_v, cc1_a);
+        trace!("CC2: {}V {}A", cc2_v, cc2_a);
+        publisher.publish(SensorData {
+            vbus_v,
+            vbus_a,
+            cc1_v,
+            cc2_v,
+        });
         CHANNEL
             .send(Data::Voltage {
                 vbus: vbus_v,
@@ -145,7 +249,7 @@ async fn sensor_monitor(i2c: I2c<'static, peripherals::I2C1, Async>) {
                 cc2: cc2_v,
             })
             .await;
-        Timer::after_secs(1).await;
+        Timer::after_millis(50).await;
     }
 }
 
@@ -233,7 +337,7 @@ async fn door_monitor(
 async fn main(spawner: Spawner) {
     let p = embassy_stm32::init(Default::default());
 
-    info!("STARTED");
+    info!("Started");
 
     // Setup door monitor
     let door_sense = ExtiInput::new(p.PC8, p.EXTI8, gpio::Pull::Up);
@@ -266,23 +370,41 @@ async fn main(spawner: Spawner) {
         ))
         .unwrap();
 
-    // Setup power sensor monitor
+    // Setup sensor monitor
     spawner
-        .spawn(sensor_monitor(I2c::new(
-            p.I2C1,
-            p.PB6,
-            p.PB7,
-            Irqs,
-            p.DMA1_CH3,
-            p.DMA1_CH4,
-            Hertz(100_000),
-            Default::default(),
-        )))
+        .spawn(sensor_monitor(
+            I2c::new(
+                p.I2C1,
+                p.PB6,
+                p.PB7,
+                Irqs,
+                p.DMA1_CH3,
+                p.DMA1_CH4,
+                Hertz(100_000),
+                Default::default(),
+            ),
+            SENSOR_DATA.publish(),
+        ))
         .unwrap();
 
     // Serial output
     spawner
         .spawn(serial_output(p.USART3, p.PC11, p.PC10))
+        .unwrap();
+
+    // Display output
+    //
+    let config = embassy_stm32::spi::Config::default();
+    let spi = embassy_stm32::spi::Spi::new_txonly(p.SPI1, p.PA1, p.PA2, p.DMA1_CH5, config);
+
+    spawner
+        .spawn(display(
+            spi,
+            p.PA7,
+            p.PA6,
+            p.PA3,
+            SENSOR_DATA.subscribe().unwrap(),
+        ))
         .unwrap();
 
     // Monitor CC; TODO swithc dynamically to CC2 if needed
@@ -310,13 +432,6 @@ async fn main(spawner: Spawner) {
 
                 let d = Data::Pd { data: buf, len: n };
                 CHANNEL.send(d).await;
-
-                ////let mut cbor = [0u8; 128];
-                //let mut cursor = Cursor::new([0u8; 128]);
-                //minicbor::encode(&tosend, &mut cursor).unwrap();
-                //let len = cursor.position();
-                //channel.send(tosend).await;
-                //uart.write_all(&cursor.get_ref()[..len]).await.unwrap();
             }
             Err(e) => info!("USB PD RX: {}", e),
         }
