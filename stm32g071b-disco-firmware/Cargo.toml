@@ -23,7 +23,7 @@ embedded-hal = "1.0.0"
 embedded-hal-bus = { git = "https://github.com/sjoerdsimons/embedded-hal", branch = "i2c-ref-async+fix-armv6-build", version = "0.2.0" }
 embedded-io-async = "0.6.1"
 heapless = { version = "0.8.0", features = ["ufmt"] }
-ina226 = { version = "0.2.0", features = ["async"], git = "https://github.com/sjoerdsimons/ina226", branch = "asyncify" }
+ina226 = { version = "0.3.0", features = ["async"] }
 minicbor = "0.24.0"
 panic-probe = { version = "0.3.1", features = ["print-defmt"] }
 ssd1306 = { version = "0.8.4", path = "../../ssd1306" }

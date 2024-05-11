@@ -597,8 +597,9 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "ina226"
-version = "0.2.0"
-source = "git+https://github.com/sjoerdsimons/ina226?branch=asyncify#041944b6ca6701fec24aa183e23be72ca02a1269"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d4e80c27f5c3114711a5bacb7bbc51f88e60855607585747e72c6fd1e4cbd2c"
 dependencies = [
  "bitflags 2.5.0",
  "byteorder",
