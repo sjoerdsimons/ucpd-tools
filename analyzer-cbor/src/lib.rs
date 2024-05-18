@@ -45,15 +45,23 @@ impl<'a> Decoder<'a> {
             return None;
         }
 
-        let mut d = minicbor::decode::Decoder::new(&self.data[self.read..self.end]);
-        match d.decode() {
-            Ok(v) => {
-                self.read += d.position();
-                Some(v)
+        loop {
+            let mut d = minicbor::decode::Decoder::new(&self.data[self.read..self.end]);
+            match d.decode() {
+                Ok(v) => {
+                    self.read += d.position();
+                    return Some(v);
+                }
+                Err(e) if e.is_end_of_input() => return None,
+                // TODO report error
+                Err(_e) => {
+                    // On error skip until parsing works again
+                    self.read += 1;
+                    if self.read >= self.data.len() {
+                        return None;
+                    }
+                }
             }
-            Err(e) if e.is_end_of_input() => None,
-            // TODO handle erros better
-            Err(_e) => None,
         }
     }
 
