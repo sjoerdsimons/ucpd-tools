@@ -45,8 +45,16 @@ fn do_work<R: Read, W: Write>(mut input: R, mut output: Option<W>) {
                     let message = Message::parse(header, &data[2..]);
                     println!("Message: {:#?}", message);
                 }
-                AnalyserData::Voltage { label, value } => {
-                    println!("== {label}: {value}V ==");
+                AnalyserData::Power {
+                    label,
+                    voltage,
+                    current,
+                } => {
+                    print!("* Power: {label}: {voltage:.2}V");
+                    if let Some(current) = current {
+                        print!(" {current:.2}A");
+                    }
+                    println!("");
                 }
             }
         }

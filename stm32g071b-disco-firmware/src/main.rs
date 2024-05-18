@@ -8,7 +8,7 @@ use defmt::{info, trace};
 use defmt_rtt as _;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::Spawner;
-use embassy_futures::select::select_array;
+use embassy_futures::select::{select, select_array, Either};
 use embassy_stm32::{
     bind_interrupts,
     exti::ExtiInput,
@@ -47,7 +47,7 @@ mod watch;
 use watch::{Watch, WatchPublisher, WatchSubscriber};
 
 // Channel for PD messages
-static CHANNEL: Channel<ThreadModeRawMutex, Data, 8> = Channel::new();
+static PD_MESSAGES: Channel<ThreadModeRawMutex, PdData, 8> = Channel::new();
 // Watch for voltage sensors
 static SENSOR_DATA: Watch<ThreadModeRawMutex, SensorData, 2> = Watch::new();
 
@@ -75,9 +75,9 @@ bind_interrupts!(struct Irqs {
 });
 
 #[derive(Copy, Clone)]
-enum Data {
-    Pd { data: [u8; 128], len: usize },
-    Voltage { vbus: f64, cc1: f64, cc2: f64 },
+struct PdData {
+    data: [u8; 128],
+    len: usize,
 }
 
 async fn send_data(uart: &mut BufferedUart<'_, USART3>, data: &AnalyserData<'_>) {
@@ -144,7 +144,12 @@ async fn display(
 }
 
 #[embassy_executor::task]
-async fn serial_output(uart: USART3, tx: PC11, rx: PC10) {
+async fn serial_output(
+    uart: USART3,
+    tx: PC11,
+    rx: PC10,
+    mut sensors: WatchSubscriber<'static, SensorData>,
+) {
     let mut config = embassy_stm32::usart::Config::default();
     config.baudrate = 115200;
     let mut tx_buf = [0u8; 256];
@@ -152,44 +157,47 @@ async fn serial_output(uart: USART3, tx: PC11, rx: PC10) {
     let mut uart = BufferedUart::new(uart, Irqs, tx, rx, &mut tx_buf, &mut rx_buf, config).unwrap();
 
     loop {
-        let data: Data = CHANNEL.receive().await;
-        match &data {
-            Data::Pd { data, len } => {
+        let next = select(PD_MESSAGES.receive(), sensors.wait_next()).await;
+        match next {
+            Either::First(pd) => {
                 send_data(
                     &mut uart,
                     &AnalyserData::PdSpy {
-                        data: data.as_slice()[..*len].into(),
+                        data: pd.data.as_slice()[..pd.len].into(),
                     },
                 )
                 .await
             }
-            Data::Voltage { vbus, cc1, cc2 } => {
+            Either::Second(data) => {
                 send_data(
                     &mut uart,
-                    &AnalyserData::Voltage {
+                    &AnalyserData::Power {
                         label: "vbus",
-                        value: *vbus,
+                        voltage: data.vbus_v,
+                        current: Some(data.vbus_a),
                     },
                 )
                 .await;
                 send_data(
                     &mut uart,
-                    &AnalyserData::Voltage {
+                    &AnalyserData::Power {
                         label: "cc1",
-                        value: *cc1,
+                        voltage: data.cc1_v,
+                        current: None,
                     },
                 )
                 .await;
                 send_data(
                     &mut uart,
-                    &AnalyserData::Voltage {
+                    &AnalyserData::Power {
                         label: "cc2",
-                        value: *cc2,
+                        voltage: data.cc2_v,
+                        current: None,
                     },
                 )
                 .await;
             }
-        };
+        }
     }
 }
 
@@ -242,13 +250,6 @@ async fn sensor_monitor(
             cc1_v,
             cc2_v,
         });
-        CHANNEL
-            .send(Data::Voltage {
-                vbus: vbus_v,
-                cc1: cc1_v,
-                cc2: cc2_v,
-            })
-            .await;
         Timer::after_millis(50).await;
     }
 }
@@ -389,7 +390,12 @@ async fn main(spawner: Spawner) {
 
     // Serial output
     spawner
-        .spawn(serial_output(p.USART3, p.PC11, p.PC10))
+        .spawn(serial_output(
+            p.USART3,
+            p.PC11,
+            p.PC10,
+            SENSOR_DATA.subscribe().unwrap(),
+        ))
         .unwrap();
 
     // Display output
@@ -430,8 +436,8 @@ async fn main(spawner: Spawner) {
                 let message = Message::parse(header, &buf[2..]);
                 info!("Message: {:?}", &message);
 
-                let d = Data::Pd { data: buf, len: n };
-                CHANNEL.send(d).await;
+                let d = PdData { data: buf, len: n };
+                PD_MESSAGES.send(d).await;
             }
             Err(e) => info!("USB PD RX: {}", e),
         }
