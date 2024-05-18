@@ -14,11 +14,13 @@ pub enum AnalyserData<'a> {
         data: &'a ByteSlice,
     },
     #[n(3)]
-    Voltage {
+    Power {
         #[n(1)]
         label: &'a str,
         #[n(2)]
-        value: f64,
+        voltage: f64,
+        #[n(3)]
+        current: Option<f64>,
     },
 }
 
