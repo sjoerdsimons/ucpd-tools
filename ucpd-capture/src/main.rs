@@ -2,6 +2,7 @@ use analyzer_cbor::{AnalyserData, Decoder};
 use byteorder::{ByteOrder, LittleEndian};
 use clap::Parser;
 use std::{
+    fmt::Display,
     fs::File,
     io::{Read, Write},
     path::PathBuf,
@@ -9,16 +10,49 @@ use std::{
 };
 use usb_pd::{header::Header, message::Message};
 
+#[derive(Copy, Clone, clap::ValueEnum, Debug, Default)]
+enum DisplayInfo {
+    #[default]
+    PdOnly,
+    PowerOnly,
+    All,
+    Nothing,
+}
+
+impl DisplayInfo {
+    fn should_show(self, d: &AnalyserData<'_>) -> bool {
+        matches!(
+            (self, d),
+            (Self::All, _)
+                | (Self::PdOnly, AnalyserData::PdSpy { .. })
+                | (Self::PowerOnly, AnalyserData::Power { .. })
+        )
+    }
+}
+
+impl Display for DisplayInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DisplayInfo::PdOnly => write!(f, "pd-only"),
+            DisplayInfo::PowerOnly => write!(f, "power-only"),
+            DisplayInfo::All => write!(f, "all"),
+            DisplayInfo::Nothing => write!(f, "nothing"),
+        }
+    }
+}
+
 #[derive(Parser, Debug)]
 struct Opts {
     #[clap(short, long)]
     output: Option<PathBuf>,
     #[clap(short, long)]
     from_file: bool,
+    #[clap(short, long, default_value_t=DisplayInfo::PdOnly)]
+    show: DisplayInfo,
     input: PathBuf,
 }
 
-fn do_work<R: Read, W: Write>(mut input: R, mut output: Option<W>) {
+fn do_work<R: Read, W: Write>(mut input: R, mut output: Option<W>, show: DisplayInfo) {
     let mut data = [0u8; 1024];
     let mut d = Decoder::new(&mut data);
     loop {
@@ -36,6 +70,9 @@ fn do_work<R: Read, W: Write>(mut input: R, mut output: Option<W>) {
         d.written(r);
 
         while let Some(data) = d.decode() {
+            if !show.should_show(&data) {
+                continue;
+            }
             match data {
                 AnalyserData::Version { version } => println!("Analyser version: {version}"),
                 AnalyserData::PdSpy { data } => {
@@ -54,7 +91,7 @@ fn do_work<R: Read, W: Write>(mut input: R, mut output: Option<W>) {
                     if let Some(current) = current {
                         print!(" {current:.2}A");
                     }
-                    println!("");
+                    println!();
                 }
             }
         }
@@ -63,19 +100,18 @@ fn do_work<R: Read, W: Write>(mut input: R, mut output: Option<W>) {
 
 fn main() {
     let opts = Opts::parse();
-
     let output = opts
         .output
         .map(|o| File::create(o).expect("Failed to open output file"));
 
     if opts.from_file {
         let input = File::open(opts.input).expect("Failed to open input file");
-        do_work(input, output);
+        do_work(input, output, opts.show);
     } else {
         let port = serialport::new(opts.input.to_str().unwrap(), 115200)
             .timeout(Duration::from_secs(u32::MAX as u64))
             .open()
             .expect("Failed to open serial port");
-        do_work(port, output);
+        do_work(port, output, opts.show);
     }
 }
