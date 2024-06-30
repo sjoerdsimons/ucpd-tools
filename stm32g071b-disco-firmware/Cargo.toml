@@ -9,18 +9,20 @@ edition = "2021"
 analyzer-cbor = { version = "0.1.0", path = "../analyzer-cbor" }
 byteorder = { version ="1.5.0", default-features = false }
 cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
-cortex-m-rt = "0.7.4"
+cortex-m-rt = "0.7"
 defmt = "0.3.6"
 defmt-rtt = "0.4.0"
 embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", version = "0.1.0" }
-embassy-executor = { version = "0.5.0", features = ["arch-cortex-m", "executor-thread", "defmt", "integrated-timers"], git = "https://github.com/embassy-rs/embassy"  }
+embassy-executor = { version = "0.5.0", git = "https://github.com/embassy-rs/embassy", features = ["arch-cortex-m", "executor-thread", "executor-interrupt", "defmt", "integrated-timers"] }
 embassy-futures = "0.1.1"
-embassy-stm32 = { version = "0.1.0", features = ["stm32g071rb", "defmt", "memory-x", "time-driver-any",  "exti"] , git = "https://github.com/embassy-rs/embassy"  }
-embassy-sync = { git = "https://github.com/embassy-rs/embassy", version = "0.5.0" }
-embassy-time = { version = "0.3.0", git = "https://github.com/embassy-rs/embassy" }
+# Need to use e.g. tim3 as it has multiple alarms available, due to running
+# multiple executors that need timers
+embassy-stm32 = { version = "0.1.0", git = "https://github.com/embassy-rs/embassy", features = ["stm32g071rb", "defmt", "memory-x", "time-driver-tim3",  "exti"] }
+embassy-sync = { version = "0.6.0", git = "https://github.com/embassy-rs/embassy" }
+embassy-time = { version = "0.3.1", git = "https://github.com/embassy-rs/embassy" }
 embedded-graphics = "0.8.1"
-embedded-hal = "1.0.0"
-embedded-hal-bus = { git = "https://github.com/sjoerdsimons/embedded-hal", branch = "i2c-ref-async+fix-armv6-build", version = "0.2.0" }
+embedded-hal = { version = "1.0.0" }
+embedded-hal-bus = { version = "0.2.0" }
 embedded-io-async = "0.6.1"
 heapless = { version = "0.8.0", features = ["ufmt"] }
 ina226 = { version = "0.3.0", features = ["async"] }
@@ -28,13 +30,15 @@ minicbor = "0.24.0"
 panic-probe = { version = "0.3.1", features = ["print-defmt"] }
 ssd1306 = { version = "0.8.4", path = "../../ssd1306" }
 ufmt = "0.2.0"
-# Hopefully temporary fork
-usb-pd = { version = "0.0.1", git = "https://github.com/sjoerdsimons/usb-pd-rs", branch = "misc"}
+usb-pd = { git ="https://github.com/fmckeogh/usb-pd-rs/" }
+
+
 
 [patch.crates-io]
-embedded-hal = { git = "https://github.com/sjoerdsimons/embedded-hal", branch = "i2c-ref-async+fix-armv6-build" }
-embedded-hal-async = { git = "https://github.com/sjoerdsimons/embedded-hal", branch = "i2c-ref-async+fix-armv6-build" }
-
+# Fix for https://github.com/rust-embedded/embedded-hal/issues/598
+embedded-hal = { git = "https://github.com/9names/embedded-hal", branch = "embedded-hal-bus-atomic-device" }
+embedded-hal-bus = { git = "https://github.com/9names/embedded-hal", branch = "embedded-hal-bus-atomic-device" }
+embassy-time = { git = "https://github.com/embassy-rs/embassy" }
 
 [profile.release]
 lto = true

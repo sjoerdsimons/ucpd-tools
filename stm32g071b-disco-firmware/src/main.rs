@@ -14,15 +14,17 @@ use embassy_stm32::{
     exti::ExtiInput,
     gpio,
     i2c::{self, I2c},
+    interrupt,
+    interrupt::InterruptExt as _,
     mode::Async,
-    peripherals::{self, PA3, PA6, PA7, PC10, PC11, USART3},
+    peripherals::{self, PA3, PA6, PA7, PC10, PC11, UCPD1, USART3},
     spi::Spi,
     time::Hertz,
-    ucpd::{self, CcSel},
+    ucpd::{self, CcPull, CcSel},
     usart::{self, BufferedUart},
 };
 use embassy_sync::{
-    blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex},
+    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
     channel::Channel,
     mutex::Mutex,
 };
@@ -39,7 +41,6 @@ use embedded_hal_bus::spi::NoDelay;
 use embedded_io_async::Write;
 use minicbor::encode::write::Cursor;
 use ssd1306::{prelude::*, Ssd1306};
-use usb_pd::message::Message;
 
 use panic_probe as _;
 
@@ -47,7 +48,7 @@ mod watch;
 use watch::{Watch, WatchPublisher, WatchSubscriber};
 
 // Channel for PD messages
-static PD_MESSAGES: Channel<ThreadModeRawMutex, PdData, 8> = Channel::new();
+static PD_MESSAGES: Channel<CriticalSectionRawMutex, PdData, 8> = Channel::new();
 // Watch for voltage sensors
 static SENSOR_DATA: Watch<ThreadModeRawMutex, SensorData, 2> = Watch::new();
 
@@ -80,7 +81,7 @@ struct PdData {
     len: usize,
 }
 
-async fn send_data(uart: &mut BufferedUart<'_, USART3>, data: &AnalyserData<'_>) {
+async fn send_data(uart: &mut BufferedUart<'_>, data: &AnalyserData<'_>) {
     let mut cursor = Cursor::new([0u8; 128]);
     minicbor::encode(data, &mut cursor).unwrap();
     let len = cursor.position();
@@ -90,7 +91,7 @@ async fn send_data(uart: &mut BufferedUart<'_, USART3>, data: &AnalyserData<'_>)
 // needs spi (spi1, sck: pa1, mosi: pa2), dc pin: pa7, reset: pa6, cs: pa3
 #[embassy_executor::task]
 async fn display(
-    spi: Spi<'static, peripherals::SPI1, Async>,
+    spi: Spi<'static, Async>,
     dc: PA7,
     reset: PA6,
     cs: PA3,
@@ -139,7 +140,7 @@ async fn display(
             .draw(&mut display)
             .unwrap();
         display.flush().unwrap();
-        Timer::after_millis(250).await;
+        Timer::after_millis(200).await;
     }
 }
 
@@ -202,10 +203,7 @@ async fn serial_output(
 }
 
 #[embassy_executor::task]
-async fn sensor_monitor(
-    i2c: I2c<'static, peripherals::I2C1, Async>,
-    publisher: WatchPublisher<'static, SensorData>,
-) {
+async fn sensor_monitor(i2c: I2c<'static, Async>, publisher: WatchPublisher<'static, SensorData>) {
     let i2c: Mutex<NoopRawMutex, _> = Mutex::new(i2c);
     let mut vbus = ina226::INA226::new(I2cDevice::new(&i2c), 0x40);
     vbus.callibrate(0.015, 5.0)
@@ -250,7 +248,7 @@ async fn sensor_monitor(
             cc1_v,
             cc2_v,
         });
-        Timer::after_millis(50).await;
+        Timer::after_millis(5).await;
     }
 }
 
@@ -334,12 +332,75 @@ async fn door_monitor(
     }
 }
 
+#[interrupt]
+#[allow(non_snake_case)]
+unsafe fn CEC() {
+    EXECUTOR_PD.on_interrupt()
+}
+
+static EXECUTOR_PD: embassy_executor::InterruptExecutor =
+    embassy_executor::InterruptExecutor::new();
+
+#[embassy_executor::task]
+async fn pd_monitor(
+    mut led_cc: gpio::Output<'static>,
+    mut ucpd: UCPD1,
+    mut cc1_pin: peripherals::PA8,
+    mut cc2_pin: peripherals::PB15,
+    mut dma_rx: peripherals::DMA1_CH1,
+    mut dma_tx: peripherals::DMA1_CH2,
+) {
+    let (mut cc_phy, mut pd_phy) = ucpd::Ucpd::new(&mut ucpd, Irqs, &mut cc1_pin, &mut cc2_pin)
+        .split_pd_phy(&mut dma_rx, &mut dma_tx, CcSel::CC1);
+    cc_phy.set_pull(CcPull::Disabled);
+
+    loop {
+        let mut buf = [0u8; 128];
+        match pd_phy.receive(&mut buf).await {
+            Ok(n) => {
+                //info!("USB PD RX: {=[u8]:?}", &buf[..n]);
+                let header = usb_pd::header::Header(LittleEndian::read_u16(&buf));
+                info!(
+                    "USB PD RX Header (I: {} R: {} {:?}): {:?}",
+                    header.message_id(),
+                    header.port_power_role(),
+                    header.message_type(),
+                    header,
+                );
+                //let message = Message::parse(header, &buf[2..]);
+                //info!("Message: {:?}", &message);
+
+                let d = PdData { data: buf, len: n };
+                PD_MESSAGES.send(d).await;
+            }
+            Err(e) => info!("USB PD RX: {}", e),
+        }
+        led_cc.toggle();
+    }
+}
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    let p = embassy_stm32::init(Default::default());
+    let config: embassy_stm32::Config = Default::default();
+    /* Optionally scale to 64 mhz
+    config.rcc.hsi = true;
+    config.rcc.pll = Some(embassy_stm32::rcc::Pll {
+        // Source from hsi (16mhz internal clock)
+        source: embassy_stm32::rcc::PllSource::HSI,
+        // divided by 1
+        prediv: embassy_stm32::rcc::PllPreDiv::DIV1,
+        // multiple by 16
+        mul: embassy_stm32::rcc::PllMul::MUL16,
+        divp: None,
+        divq: None,
+        // divide by 4
+        divr: Some(embassy_stm32::rcc::PllRDiv::DIV4), // 16 / 1 * 16 / 4 = 64 Mhz
+    });
+    config.rcc.sys = embassy_stm32::rcc::Sysclk::PLL1_R;
+    */
+    let p = embassy_stm32::init(config);
 
     info!("Started");
-
     // Setup door monitor
     let door_sense = ExtiInput::new(p.PC8, p.EXTI8, gpio::Pull::Up);
     let en_cc1 = gpio::Output::new(p.PB10, gpio::Level::High, gpio::Speed::Low);
@@ -400,6 +461,7 @@ async fn main(spawner: Spawner) {
 
     // Display output
     //
+    info!("Display");
     let config = embassy_stm32::spi::Config::default();
     let spi = embassy_stm32::spi::Spi::new_txonly(p.SPI1, p.PA1, p.PA2, p.DMA1_CH5, config);
 
@@ -413,34 +475,13 @@ async fn main(spawner: Spawner) {
         ))
         .unwrap();
 
-    // Monitor CC; TODO swithc dynamically to CC2 if needed
-    // _cc_phy is unused as there is an external Rd in both modes
-    let mut led_cc = gpio::Output::new(p.PD5, gpio::Level::Low, gpio::Speed::Low);
-    let (_cc_phy, mut pd_phy) = ucpd::Ucpd::new(p.UCPD1, Irqs, p.PA8, p.PB15).split_pd_phy(
-        p.DMA1_CH1,
-        p.DMA1_CH2,
-        CcSel::CC1,
-    );
-
-    loop {
-        let mut buf = [0u8; 128];
-        match pd_phy.receive(&mut buf).await {
-            Ok(n) => {
-                info!("USB PD RX: {=[u8]:?}", &buf[..n]);
-                let header = usb_pd::header::Header(LittleEndian::read_u16(&buf));
-                info!(
-                    "USB PD RX Header ({:?}): {:?}",
-                    header.message_type(),
-                    header,
-                );
-                let message = Message::parse(header, &buf[2..]);
-                info!("Message: {:?}", &message);
-
-                let d = PdData { data: buf, len: n };
-                PD_MESSAGES.send(d).await;
-            }
-            Err(e) => info!("USB PD RX: {}", e),
-        }
-        led_cc.toggle();
-    }
+    // PD monitor
+    let led_cc = gpio::Output::new(p.PD5, gpio::Level::Low, gpio::Speed::Low);
+    interrupt::CEC.set_priority(interrupt::Priority::P6);
+    let pd_spawner = EXECUTOR_PD.start(embassy_stm32::interrupt::CEC);
+    pd_spawner
+        .spawn(pd_monitor(
+            led_cc, p.UCPD1, p.PA8, p.PB15, p.DMA1_CH1, p.DMA1_CH2,
+        ))
+        .unwrap();
 }
