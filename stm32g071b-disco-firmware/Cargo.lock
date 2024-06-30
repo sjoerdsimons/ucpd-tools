@@ -455,8 +455,7 @@ source = "git+https://github.com/9names/embedded-hal?branch=embedded-hal-bus-ato
 [[package]]
 name = "embedded-hal-async"
 version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c4c685bbef7fe13c3c6dd4da26841ed3980ef33e841cddfa15ce8a8fb3f1884"
+source = "git+https://github.com/9names/embedded-hal?branch=embedded-hal-bus-atomic-device#d346553c0cc8a0ad6fde4551af8d62a733633770"
 dependencies = [
  "embedded-hal 1.0.0",
 ]
@@ -468,6 +467,7 @@ source = "git+https://github.com/9names/embedded-hal?branch=embedded-hal-bus-ato
 dependencies = [
  "critical-section",
  "embedded-hal 1.0.0",
+ "embedded-hal-async",
  "portable-atomic",
 ]
 
@@ -829,12 +829,14 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 [[package]]
 name = "ssd1306"
 version = "0.8.4"
+source = "git+https://github.com/sjoerdsimons/ssd1306?branch=async#d0dd1fd490ecb8f80bb2a43f99b76090a0cd5a69"
 dependencies = [
  "display-interface",
  "display-interface-i2c",
  "display-interface-spi",
  "embedded-graphics-core",
  "embedded-hal 1.0.0",
+ "embedded-hal-async",
  "maybe-async-cfg",
 ]
 
@@ -886,6 +888,7 @@ dependencies = [
  "embassy-time",
  "embedded-graphics",
  "embedded-hal 1.0.0",
+ "embedded-hal-async",
  "embedded-hal-bus",
  "embedded-io-async",
  "heapless",

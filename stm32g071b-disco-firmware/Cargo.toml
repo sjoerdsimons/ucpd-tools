@@ -22,13 +22,14 @@ embassy-sync = { version = "0.6.0", git = "https://github.com/embassy-rs/embassy
 embassy-time = { version = "0.3.1", git = "https://github.com/embassy-rs/embassy" }
 embedded-graphics = "0.8.1"
 embedded-hal = { version = "1.0.0" }
-embedded-hal-bus = { version = "0.2.0" }
+embedded-hal-bus = { version = "0.2.0", features = [ "async" ] }
+embedded-hal-async = { version = "1.0.0"}
 embedded-io-async = "0.6.1"
 heapless = { version = "0.8.0", features = ["ufmt"] }
 ina226 = { version = "0.3.0", features = ["async"] }
 minicbor = "0.24.0"
 panic-probe = { version = "0.3.1", features = ["print-defmt"] }
-ssd1306 = { version = "0.8.4", path = "../../ssd1306" }
+ssd1306 = { version = "0.8.4" , features = [ "async" ]}
 ufmt = "0.2.0"
 usb-pd = { git ="https://github.com/fmckeogh/usb-pd-rs/" }
 
@@ -39,6 +40,9 @@ usb-pd = { git ="https://github.com/fmckeogh/usb-pd-rs/" }
 embedded-hal = { git = "https://github.com/9names/embedded-hal", branch = "embedded-hal-bus-atomic-device" }
 embedded-hal-bus = { git = "https://github.com/9names/embedded-hal", branch = "embedded-hal-bus-atomic-device" }
 embassy-time = { git = "https://github.com/embassy-rs/embassy" }
+embedded-hal-async = { git = "https://github.com/9names/embedded-hal", branch = "embedded-hal-bus-atomic-device" }
+# wip async support
+ssd1306 = { git = "https://github.com/sjoerdsimons/ssd1306", branch="async" }
 
 [profile.release]
 lto = true

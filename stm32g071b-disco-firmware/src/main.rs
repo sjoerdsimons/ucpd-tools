@@ -37,10 +37,9 @@ use embedded_graphics::{
     text::{Baseline, Text},
     Drawable,
 };
-use embedded_hal_bus::spi::NoDelay;
 use embedded_io_async::Write;
 use minicbor::encode::write::Cursor;
-use ssd1306::{prelude::*, Ssd1306};
+use ssd1306::{prelude::*, Ssd1306Async};
 
 use panic_probe as _;
 
@@ -101,16 +100,17 @@ async fn display(
     let cs = gpio::Output::new(cs, gpio::Level::Low, gpio::Speed::Low);
     let mut reset = gpio::Output::new(reset, gpio::Level::Low, gpio::Speed::Low);
 
-    let device = embedded_hal_bus::spi::ExclusiveDevice::new(spi, cs, NoDelay).unwrap();
+    let device = embedded_hal_bus::spi::ExclusiveDevice::new_no_delay(spi, cs).unwrap();
 
     let interface = SPIInterface::new(device, dc);
-    let mut display = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)
+    let mut display = Ssd1306Async::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)
         .into_buffered_graphics_mode();
 
     display
         .reset(&mut reset, &mut embassy_time::Delay {})
+        .await
         .unwrap();
-    display.init().unwrap();
+    display.init().await.unwrap();
 
     let text_style = MonoTextStyleBuilder::new()
         .font(&FONT_6X12)
@@ -139,7 +139,7 @@ async fn display(
         Text::with_baseline(&info, Point::new(4, 8), text_style, Baseline::Top)
             .draw(&mut display)
             .unwrap();
-        display.flush().unwrap();
+        display.flush().await.unwrap();
         Timer::after_millis(200).await;
     }
 }
