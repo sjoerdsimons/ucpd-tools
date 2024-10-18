@@ -350,8 +350,13 @@ async fn pd_monitor(
     mut dma_rx: peripherals::DMA1_CH1,
     mut dma_tx: peripherals::DMA1_CH2,
 ) {
-    let (mut cc_phy, mut pd_phy) = ucpd::Ucpd::new(&mut ucpd, Irqs, &mut cc1_pin, &mut cc2_pin)
-        .split_pd_phy(&mut dma_rx, &mut dma_tx, CcSel::CC1);
+    let config = ucpd::Config::default();
+    let (mut cc_phy, mut pd_phy) =
+        ucpd::Ucpd::new(&mut ucpd, Irqs, &mut cc1_pin, &mut cc2_pin, config).split_pd_phy(
+            &mut dma_rx,
+            &mut dma_tx,
+            CcSel::CC1,
+        );
     cc_phy.set_pull(CcPull::Disabled);
 
     loop {
